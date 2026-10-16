@@ -1,0 +1,10 @@
+Imaging/tools/wimlib/*.zip
+*.iso
+Packages/
+Drivers/
+Lang/
+Lxp/
+Fod/
+StoreApps/
+local.psd1
+Config/local.psd1
