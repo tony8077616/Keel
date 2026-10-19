@@ -30,12 +30,12 @@ function Convert-WinMediaEsdToWim {
     else {
         Write-WinMediaLog -Config $Config -Level Info -Message "使用 DISM Cmdlet 轉換 ESD（未指定 Wimlib.Path）：$SourceEsd"
         $indexes = Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
-            Get-WindowsImage -ImagePath $SourceEsd
+            Get-WindowsImage -ImagePath $SourceEsd -LogLevel $Config.DismLogLevel
         }
         foreach ($image in $indexes) {
             $exportIndex = $image.ImageIndex
             $export = {
-                Export-WindowsImage -SourceImagePath $SourceEsd -SourceIndex $exportIndex -DestinationImagePath $DestinationWim -CompressionType Max | Out-Null
+                Export-WindowsImage -SourceImagePath $SourceEsd -SourceIndex $exportIndex -DestinationImagePath $DestinationWim -CompressionType Max -LogLevel $Config.DismLogLevel | Out-Null
             }.GetNewClosure()
             Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock $export | Out-Null
         }

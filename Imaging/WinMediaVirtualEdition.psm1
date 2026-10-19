@@ -103,7 +103,7 @@ function Add-WinMediaVirtualEdition {
         Write-WinMediaLog -Config $Config -Level Verbose -Message "虛擬版本掛載點：$mountedPath，目標 $Edition"
 
         $available = Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
-            Get-WindowsEdition -Path $mountedPath -Target
+            Get-WindowsEdition -Path $mountedPath -Target -LogLevel $Config.DismLogLevel
         }
         $names = @($available | ForEach-Object { $_.Edition })
         $match = $names | Where-Object { $_ -ieq $Edition } | Select-Object -First 1
@@ -112,12 +112,12 @@ function Add-WinMediaVirtualEdition {
         }
 
         Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
-            Set-WindowsEdition -Path $mountedPath -Edition $match
+            Set-WindowsEdition -Path $mountedPath -Edition $match -LogLevel $Config.DismLogLevel
         } | Out-Null
         Add-WinMediaTextLine -Path $virtualLog -Line ("{0} Set-WindowsEdition -Edition {1}" -f (Get-Date -Format 'yyyy-MM-ddTHH:mm:ss'), $match)
 
         Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
-            Save-WindowsImage -Path $mountedPath -Append | Out-Null
+            Save-WindowsImage -Path $mountedPath -Append -LogLevel $Config.DismLogLevel | Out-Null
         } | Out-Null
         Add-WinMediaTextLine -Path $virtualLog -Line ("{0} Save-WindowsImage -Append" -f (Get-Date -Format 'yyyy-MM-ddTHH:mm:ss'))
     }
@@ -125,7 +125,7 @@ function Add-WinMediaVirtualEdition {
     Mount-WinMediaImage -ImagePath $ImagePath -Index $Index -MountPath $MountPath -CommitOnSuccess:$false -Action $action -Config $Config | Out-Null
 
     $images = Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
-        Get-WindowsImage -ImagePath $ImagePath
+        Get-WindowsImage -ImagePath $ImagePath -LogLevel $Config.DismLogLevel
     }
     $appended = $images | Select-Object -Last 1
     if ($appended.EditionId -ine $Edition) {
