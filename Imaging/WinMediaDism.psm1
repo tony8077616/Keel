@@ -2,9 +2,22 @@
 $ErrorActionPreference = 'Stop'
 
 # DISM Cmdlet 來源分派模組（§3.4）：Inbox 內建模組或 ADK 的 Dism.psd1
-# 需要的 Config 鍵：DismProvider（Inbox／ADK）、AdkRoot（ADK 時）、DebugTrace、LogDir（DebugTrace ≥ 3 時的追蹤檔）、OperationLog
+# 需要的 Config 鍵：DismProvider（Inbox／ADK）、AdkRoot（ADK 時）、DebugTrace、LogDir（DebugTrace ≥ 3 時的追蹤檔）、OperationLog、DismLogLevel（缺鍵時用預設）
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath '..\Common\WinMediaOperation.psm1') -Force
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'WinMediaAdk.psm1') -Force
+
+function Resolve-WinMediaDismLogLevel {
+    # DISM Cmdlet 的 -LogLevel 值（名稱，不是數字）；舊設定檔沒有此鍵時用產品預設
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory)][hashtable]$Config)
+
+    $level = if ($Config.ContainsKey('DismLogLevel')) { $Config.DismLogLevel } else { 'WarningsInfo' }
+    if ('Errors', 'Warnings', 'WarningsInfo', 'Debug' -notcontains $level) {
+        throw "DismLogLevel 必須為 Errors／Warnings／WarningsInfo／Debug 其中之一（名稱，不是數字），目前為：'$level'。"
+    }
+    return $level
+}
 
 function Invoke-WinMediaDism {
     # DISM 來源分派（§3.4）：只呼叫 DISM Cmdlet（§3.4.3），不直接呼叫 dism.exe
@@ -14,6 +27,9 @@ function Invoke-WinMediaDism {
         [Parameter(Mandatory)][scriptblock]$ScriptBlock,
         [Parameter(Mandatory)][hashtable]$Config
     )
+
+    # 回寫到呼叫端同一個 hashtable：ScriptBlock 讀的 $Config 與呼叫端是同一份，所以缺鍵的舊設定也能讀到預設值
+    $Config.DismLogLevel = Resolve-WinMediaDismLogLevel -Config $Config
 
     switch ($Provider) {
         'Inbox' {
@@ -43,4 +59,4 @@ function Invoke-WinMediaDism {
     return Invoke-WinMediaOperation -Category Dism -Operation $Provider -Target "DISM[$Provider]" -ScriptBlock $wrapped -Config $Config
 }
 
-Export-ModuleMember -Function Invoke-WinMediaDism
+Export-ModuleMember -Function Invoke-WinMediaDism, Resolve-WinMediaDismLogLevel
