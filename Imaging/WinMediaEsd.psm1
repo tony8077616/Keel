@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 
 # ESD ↔ WIM 轉換模組（§2.4、§3.2 步驟 2a）
-# 需要的 Config 鍵：Wimlib.Path（有指定才走 wimlib）、DismProvider、WorkDir／LogLevel／LogFile、DebugTrace、OperationLog
+# 需要的 Config 鍵：Wimlib.Path（有指定才走 wimlib）、DismProvider、DismLogLevel、WorkDir／LogLevel／LogFile、DebugTrace、OperationLog
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath '..\Common\WinMediaLog.psm1') -Force
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath '..\Common\WinMediaOperation.psm1') -Force
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'WinMediaDism.psm1') -Force

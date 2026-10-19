@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 
 # 虛擬版本模組（§2.7）：來源條件驗證（純邏輯）與 DISM Cmdlet 新增索引
-# 需要的 Config 鍵：DismProvider、LogDir（DismVirtualEditions.log）、DebugTrace、OperationLog、LogLevel／LogFile
+# 需要的 Config 鍵：DismProvider、DismLogLevel、LogDir（DismVirtualEditions.log）、DebugTrace、OperationLog、LogLevel／LogFile
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath '..\Common\WinMediaLog.psm1') -Force
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'WinMediaDism.psm1') -Force
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'WinMediaImage.psm1') -Force

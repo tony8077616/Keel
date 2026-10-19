@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 
 # 映像掛載包裝模組（§3.3）：try/finally 保證卸載；成功才 Save，其餘一律 Discard
-# 需要的 Config 鍵：DismProvider、DebugTrace、LogDir、OperationLog、LogLevel／LogFile
+# 需要的 Config 鍵：DismProvider、DismLogLevel、DebugTrace、LogDir、OperationLog、LogLevel／LogFile
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath '..\Common\WinMediaLog.psm1') -Force
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'WinMediaDism.psm1') -Force
 
