@@ -25,7 +25,7 @@ function Mount-WinMediaImage {
     if ($createdMountDir) { New-Item -ItemType Directory -Path $MountPath -Force | Out-Null }
     try {
         Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
-            Mount-WindowsImage -ImagePath $ImagePath -Index $Index -Path $MountPath -ReadOnly:$ReadOnly | Out-Null
+            Mount-WindowsImage -ImagePath $ImagePath -Index $Index -Path $MountPath -ReadOnly:$ReadOnly -LogLevel $Config.DismLogLevel | Out-Null
         }
     }
     catch {
@@ -44,10 +44,10 @@ function Mount-WinMediaImage {
         $save = $succeeded -and $CommitOnSuccess -and (-not $ReadOnly)
         Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
             if ($save) {
-                Dismount-WindowsImage -Path $MountPath -Save | Out-Null
+                Dismount-WindowsImage -Path $MountPath -Save -LogLevel $Config.DismLogLevel | Out-Null
             }
             else {
-                Dismount-WindowsImage -Path $MountPath -Discard | Out-Null
+                Dismount-WindowsImage -Path $MountPath -Discard -LogLevel $Config.DismLogLevel | Out-Null
             }
         }
         # 只在卸載成功（上一行未拋出）後移除；未卸載的掛載點可能仍被占用，不得刪除
