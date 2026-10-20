@@ -8,7 +8,7 @@ Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath '..\Common\WinMedi
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'WinMediaAdk.psm1') -Force
 
 # 本工作階段由相容匯入載入的來源（'DISM' 或 ADK 的 Dism.psd1 路徑）；$null = 尚未匯入
-$script:DismCompatSource = $null
+if (-not (Get-Variable -Name WinMediaDismCompatSource -Scope Global -ErrorAction SilentlyContinue)) { $global:WinMediaDismCompatSource = $null }  # 存 $global：多個模組以 -Force 重新匯入本模組，$script: 狀態會被重設
 
 function Resolve-WinMediaDismLogLevel {
     # DISM Cmdlet 的 -LogLevel 值（名稱，不是數字）；舊設定檔沒有此鍵時用產品預設
@@ -66,7 +66,7 @@ function Import-WinMediaDismCompat {
 
     # 已知警告（WinPSCompatSession 還原序列化提示）收進日誌，不以警告串流顯示
     $null = Import-Module -Name $Source -Verbose -Global -PassThru -UseWindowsPowerShell -WarningAction SilentlyContinue -WarningVariable compatWarning
-    foreach ($w in @($compatWarning)) { Write-WinMediaLog -Config $Config -Level Info -Message "已知（pwsh 7 相容匯入）：$w" }
+    foreach ($w in @($compatWarning)) { if ("$w" -like '*WinPSCompatSession*') { Write-WinMediaLog -Config $Config -Level Info -Message "已知（pwsh 7 相容匯入）：$w" } else { Write-Warning "$w" } }
     Write-WinMediaLog -Config $Config -Level Info -Message "pwsh 7：DISM 已以 Windows PowerShell 5.1 相容模式匯入（Import-Module -Name '$Source' -UseWindowsPowerShell）。"
 }
 
@@ -94,16 +94,16 @@ function Initialize-WinMediaDismCompat {
     )
 
     Test-WinMediaDismHost -Provider $Provider -Config $Config
-    if ($script:DismCompatSource -eq $Source) { return }
-    if ($script:DismCompatSource) {
-        throw "本工作階段已以 '$($script:DismCompatSource)' 載入 DISM，不能中途改用 '$Source'；請重新開啟工作階段後再執行（§3.4.2 2e）。"
+    if ($global:WinMediaDismCompatSource -eq $Source) { return }
+    if ($global:WinMediaDismCompatSource) {
+        throw "本工作階段已以 '$($global:WinMediaDismCompatSource)' 載入 DISM，不能中途改用 '$Source'；請重新開啟工作階段後再執行（§3.4.2 2e）。"
     }
     if (Get-WinMediaDismLoaded) {
         Write-WinMediaLog -Config $Config -Level Info -Message 'pwsh 7：偵測到原生自動載入的 Dism，改以相容模式重新匯入。'
         $null = Remove-WinMediaDismLoaded
     }
     $null = Import-WinMediaDismCompat -Config $Config -Source $Source
-    $script:DismCompatSource = $Source
+    $global:WinMediaDismCompatSource = $Source
 }
 
 function Invoke-WinMediaDism {
