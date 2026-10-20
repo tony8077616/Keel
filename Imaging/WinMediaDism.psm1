@@ -64,7 +64,9 @@ function Import-WinMediaDismCompat {
         [Parameter(Mandatory)][string]$Source
     )
 
-    $null = Import-Module -Name $Source -Verbose -Global -PassThru -UseWindowsPowerShell
+    # 已知警告（WinPSCompatSession 還原序列化提示）收進日誌，不以警告串流顯示
+    $null = Import-Module -Name $Source -Verbose -Global -PassThru -UseWindowsPowerShell -WarningAction SilentlyContinue -WarningVariable compatWarning
+    foreach ($w in @($compatWarning)) { Write-WinMediaLog -Config $Config -Level Info -Message "已知（pwsh 7 相容匯入）：$w" }
     Write-WinMediaLog -Config $Config -Level Info -Message "pwsh 7：DISM 已以 Windows PowerShell 5.1 相容模式匯入（Import-Module -Name '$Source' -UseWindowsPowerShell）。"
 }
 
