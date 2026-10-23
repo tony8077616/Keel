@@ -61,7 +61,7 @@ Describe 'Resolve-WinMediaWimlib 預設快取完整性（zip 校驗 + 逐檔雜�
 
         It '快取 zip 本身被竄改時，改走下載流程重新取得' {
             [System.IO.File]::WriteAllText((Join-Path $script:toolDir 'fake-wimlib.zip'), 'junk')
-            Mock Invoke-WebRequest { param($Uri, $OutFile) Copy-Item -LiteralPath $script:zipSrc -Destination $OutFile -Force }
+            Mock Invoke-WebRequest { param([string]$OutFile) Copy-Item -LiteralPath $script:zipSrc -Destination $OutFile -Force }
             Resolve-WinMediaWimlib -Config $script:config | Should -Be $script:exe
             Should -Invoke Invoke-WebRequest -Times 1 -Exactly
             (Get-FileHash -LiteralPath (Join-Path $script:toolDir 'fake-wimlib.zip')).Hash | Should -Be $script:zipHash
