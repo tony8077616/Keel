@@ -37,6 +37,45 @@ function Get-WinMediaWimlibSpec {
     }
 }
 
+function Test-WinMediaWimlibCache {
+    # 預設快取完整性：快取內的 zip 須符合固定 SHA-256，zip 內每個檔案的雜湊須與磁碟一致，且不得有 zip 沒有的多餘檔案
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$ToolDir,
+        [Parameter(Mandatory)][pscustomobject]$Spec
+    )
+
+    $cachedZip = Join-Path -Path $ToolDir -ChildPath $Spec.FileName
+    if (-not (Test-WinMediaFileHash -Path $cachedZip -Sha256 $Spec.Sha256)) {
+        return $false
+    }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $expected = @{ $Spec.FileName = $true }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($cachedZip)
+    try {
+        foreach ($entry in $archive.Entries) {
+            if (-not $entry.Name) { continue }
+            $relative = $entry.FullName.Replace('/', '\')
+            $expected[$relative] = $true
+            $onDisk = Join-Path -Path $ToolDir -ChildPath $relative
+            if (-not (Test-Path -LiteralPath $onDisk -PathType Leaf)) { return $false }
+            $stream = $entry.Open()
+            try { $want = [System.BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '') } finally { $stream.Dispose() }
+            if ((Get-FileHash -LiteralPath $onDisk -Algorithm SHA256).Hash -ne $want) { return $false }
+        }
+    }
+    finally {
+        $archive.Dispose()
+        $sha.Dispose()
+    }
+    $root = (Get-Item -LiteralPath $ToolDir).FullName.TrimEnd('\') + '\'
+    foreach ($file in Get-ChildItem -LiteralPath $ToolDir -Recurse -File -Force) {
+        if (-not $expected.ContainsKey($file.FullName.Substring($root.Length))) { return $false }
+    }
+    return $true
+}
+
 function Resolve-WinMediaWimlib {
     # wimlib-imagex 解析：Config.Wimlib.Path 已存在則直接使用；否則取得固定版本並校驗 SHA-256 後解壓縮到目標位置
     [CmdletBinding()]
@@ -45,10 +84,11 @@ function Resolve-WinMediaWimlib {
     )
 
     $exe = $Config.Wimlib.Path
-    if ([string]::IsNullOrWhiteSpace($exe)) {
+    $isDefault = [string]::IsNullOrWhiteSpace($exe)
+    if ($isDefault) {
         $exe = Join-Path -Path $env:LOCALAPPDATA -ChildPath 'WinMediaRefresh\tools\wimlib-1.14.5\wimlib-imagex.exe'
     }
-    if (Test-Path -LiteralPath $exe -PathType Leaf) {
+    elseif (Test-Path -LiteralPath $exe -PathType Leaf) {
         return $exe
     }
 
@@ -58,7 +98,26 @@ function Resolve-WinMediaWimlib {
     $zip = Join-Path -Path $downloadDir -ChildPath $spec.FileName
     $bundled = Join-Path -Path $script:ImagingRoot -ChildPath ('tools\wimlib\' + $spec.FileName)
 
-    if (Test-WinMediaFileHash -Path $bundled -Sha256 $spec.Sha256) {
+    $haveZip = $false
+    if ($isDefault -and (Test-Path -LiteralPath $toolDir)) {
+        # shortcut: 驗證到 wimlib-imagex.exe 實際執行之間仍有 TOCTOU 空窗（同使用者程式可在此間隔替換檔案）, 改為複製到管理員專屬目錄再執行或鎖定檔案時升級
+        if (Test-WinMediaWimlibCache -ToolDir $toolDir -Spec $spec) {
+            return $exe
+        }
+        Write-WinMediaLog -Config $Config -Level Warning -Message "wimlib 快取完整性檢查失敗，刪除並重新解壓：$toolDir"
+        $cachedZip = Join-Path -Path $toolDir -ChildPath $spec.FileName
+        if (Test-WinMediaFileHash -Path $cachedZip -Sha256 $spec.Sha256) {
+            New-Item -ItemType Directory -Path $downloadDir -Force | Out-Null
+            Copy-Item -LiteralPath $cachedZip -Destination $zip -Force
+            $haveZip = $true
+        }
+        Remove-Item -LiteralPath $toolDir -Recurse -Force
+    }
+
+    if ($haveZip) {
+        Write-WinMediaLog -Config $Config -Level Info -Message '使用快取中已驗證的 wimlib 壓縮檔重新解壓'
+    }
+    elseif (Test-WinMediaFileHash -Path $bundled -Sha256 $spec.Sha256) {
         Write-WinMediaLog -Config $Config -Level Info -Message "使用模組內附的 wimlib 壓縮檔：$bundled"
         $zip = $bundled
     }
@@ -81,6 +140,10 @@ function Resolve-WinMediaWimlib {
     Invoke-WinMediaOperation -Category Archive -Operation 'ExpandWimlib' -Target $toolDir -Config $Config -ScriptBlock {
         Expand-Archive -LiteralPath $zip -DestinationPath $toolDir -Force
     } | Out-Null
+
+    if ($isDefault) {
+        Copy-Item -LiteralPath $zip -Destination (Join-Path -Path $toolDir -ChildPath $spec.FileName) -Force
+    }
 
     $extracted = Join-Path -Path $toolDir -ChildPath 'wimlib-imagex.exe'
     if (-not (Test-Path -LiteralPath $extracted -PathType Leaf)) {
