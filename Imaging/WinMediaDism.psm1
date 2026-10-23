@@ -8,7 +8,15 @@ Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath '..\Common\WinMedi
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'WinMediaAdk.psm1') -Force
 
 # 本工作階段由相容匯入載入的來源（'DISM' 或 ADK 的 Dism.psd1 路徑）；$null = 尚未匯入
-if (-not (Get-Variable -Name WinMediaDismCompatSource -Scope Global -ErrorAction SilentlyContinue)) { $global:WinMediaDismCompatSource = $null }  # 存 $global：多個模組以 -Force 重新匯入本模組，$script: 狀態會被重設
+# 存 $global：多個模組以 -Force 重新匯入本模組，$script: 狀態會被重設
+function Initialize-WinMediaDismCompatState {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = '跨 -Force 重新匯入保留相容狀態，見檔頭註解')]
+    [CmdletBinding()]
+    param()
+
+    if (-not (Get-Variable -Name WinMediaDismCompatSource -Scope Global -ErrorAction SilentlyContinue)) { $global:WinMediaDismCompatSource = $null }
+}
+Initialize-WinMediaDismCompatState
 
 function Resolve-WinMediaDismLogLevel {
     # DISM Cmdlet 的 -LogLevel 值（名稱，不是數字）；舊設定檔沒有此鍵時用產品預設
@@ -50,9 +58,10 @@ function Get-WinMediaDismLoaded {
 }
 
 function Remove-WinMediaDismLoaded {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param()
 
+    if (-not $PSCmdlet.ShouldProcess('Dism', '移除原生自動載入的 Dism 模組')) { return }
     Remove-Module -Name Dism -Force
 }
 
@@ -86,6 +95,7 @@ function Test-WinMediaDismHost {
 
 function Initialize-WinMediaDismCompat {
     # pwsh 7 的「先檢查、沒有就匯入」：只認自己匯入過的來源；原生自動載入的先移除再匯入；本工作階段中途換來源則擲例外
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = '跨 -Force 重新匯入保留相容狀態，見檔頭註解')]
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][ValidateSet('Inbox', 'ADK')][string]$Provider,
@@ -100,7 +110,7 @@ function Initialize-WinMediaDismCompat {
     }
     if (Get-WinMediaDismLoaded) {
         Write-WinMediaLog -Config $Config -Level Info -Message 'pwsh 7：偵測到原生自動載入的 Dism，改以相容模式重新匯入。'
-        $null = Remove-WinMediaDismLoaded
+        $null = Remove-WinMediaDismLoaded -WhatIf:$false
     }
     $null = Import-WinMediaDismCompat -Config $Config -Source $Source
     $global:WinMediaDismCompatSource = $Source
