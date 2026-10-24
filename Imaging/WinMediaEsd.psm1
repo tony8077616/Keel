@@ -72,6 +72,13 @@ function Export-WinMediaEsd {
         [Parameter(Mandatory)][hashtable]$Config
     )
 
+    # wimlib export 對既有檔案是附加映像而非覆寫，須先移除（與 Convert-WinMediaEsdToWim 相同）
+    if (Test-Path -LiteralPath $DestinationEsd) {
+        Invoke-WinMediaOperation -Category File -Operation 'Remove' -Target $DestinationEsd -Config $Config -ScriptBlock {
+            Remove-Item -LiteralPath $DestinationEsd -Force
+        } | Out-Null
+    }
+
     Invoke-WinMediaWimlib -ArgumentList @('export', $SourceWim, 'all', $DestinationEsd, '--compress=LZMS', '--solid') -Config $Config | Out-Null
 
     Invoke-WinMediaOperation -Category File -Operation 'Remove' -Target $SourceWim -Config $Config -ScriptBlock {
