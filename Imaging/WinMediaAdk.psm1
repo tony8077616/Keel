@@ -78,6 +78,18 @@ function Resolve-WinMediaOscdimg {
     return $path
 }
 
+function Test-WinMediaSignerIsMicrosoft {
+    # 逐一比對 X.500 RDN 的 O 欄位完整相等；字串正規式會被引號 CN 內的 ", O=Microsoft Corporation" 騙過
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)][System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate
+    )
+
+    $rdns = $Certificate.SubjectName.Decode([System.Security.Cryptography.X509Certificates.X500DistinguishedNameFlags]::UseNewLines) -split "`r?`n"
+    return [bool]($rdns | Where-Object { $_ -ceq 'O=Microsoft Corporation' })
+}
+
 function Install-WinMediaAdk {
     # 缺少 ADK 時自動安裝 Deployment Tools（oscdimg、ADK DISM）到 Config.AdkRoot；安裝程式必須為 Microsoft 簽章
     [CmdletBinding()]
@@ -100,7 +112,7 @@ function Install-WinMediaAdk {
     } | Out-Null
 
     $signature = Get-AuthenticodeSignature -LiteralPath $installer
-    if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+    if ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate -or -not (Test-WinMediaSignerIsMicrosoft -Certificate $signature.SignerCertificate)) {
         Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
         throw "ADK 安裝程式簽章無效或非 Microsoft 簽署，已刪除：$installer"
     }
