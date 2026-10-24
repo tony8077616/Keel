@@ -6,6 +6,9 @@ $ErrorActionPreference = 'Stop'
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'WinMediaLog.psm1') -Force
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath 'WinMediaOperation.psm1') -Force
 
+# 主控台工具（cmd、reg 等）以系統 OEM code page 輸出；不指定時 .NET 依父行程的主控台解碼，兩者不同時中文會變成 U+FFFD
+$script:OemEncoding = [Text.Encoding]::GetEncoding([int](Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Nls\CodePage' -Name OEMCP).OEMCP)
+
 function Invoke-WinMediaExternal {
     # 第三方程式執行（§4.1）：同步讀取 stdout 與 stderr，避免緩衝區死鎖；參數先遮蔽再紀錄
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'StandardInputPath', Justification = '由 $run 閉包使用，PSSA 無法追蹤閉包內的參數')]
@@ -32,6 +35,8 @@ function Invoke-WinMediaExternal {
         $startInfo.RedirectStandardError = $true
         $startInfo.RedirectStandardInput = [bool]$StandardInputPath
         $startInfo.CreateNoWindow = $true
+        $startInfo.StandardOutputEncoding = $script:OemEncoding
+        $startInfo.StandardErrorEncoding = $script:OemEncoding
 
         $process = New-Object -TypeName System.Diagnostics.Process
         $process.StartInfo = $startInfo
