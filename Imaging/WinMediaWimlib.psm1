@@ -76,6 +76,28 @@ function Test-WinMediaWimlibCache {
     return $true
 }
 
+function Expand-WinMediaWimlibZip {
+    # 驗證與解壓使用同一份位元組：整檔讀入記憶體、比對 SHA-256，再從同一份位元組解壓（驗證後檔案不可被替換）
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Zip,
+        [Parameter(Mandatory)][string]$DestinationDir,
+        [Parameter(Mandatory)][string]$Sha256
+    )
+
+    $bytes = [System.IO.File]::ReadAllBytes($Zip)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { $actual = [System.BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '') } finally { $sha.Dispose() }
+    if ($actual -ine $Sha256) { throw "wimlib 壓縮檔 SHA-256 不符：$Zip" }
+
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $stream = [System.IO.MemoryStream]::new($bytes)
+    $archive = [System.IO.Compression.ZipArchive]::new($stream, [System.IO.Compression.ZipArchiveMode]::Read)
+    try { [System.IO.Compression.ZipFileExtensions]::ExtractToDirectory($archive, $DestinationDir) }
+    finally { $archive.Dispose(); $stream.Dispose() }
+}
+
 function Resolve-WinMediaWimlib {
     # wimlib-imagex 解析：Config.Wimlib.Path 已存在則直接使用；否則取得固定版本並校驗 SHA-256 後解壓縮到目標位置
     [CmdletBinding()]
@@ -136,9 +158,13 @@ function Resolve-WinMediaWimlib {
         }
     }
 
+    # 非預設路徑是使用者指定的目錄：不清空、不覆寫，已有內容即拒絕（預設路徑已在上方清空）
+    if (-not $isDefault -and (Test-Path -LiteralPath $toolDir) -and @(Get-ChildItem -LiteralPath $toolDir -Force).Count -gt 0) {
+        throw "wimlib 目錄非空，拒絕解壓（請指定空目錄或移除既有檔案）：$toolDir"
+    }
     New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
     Invoke-WinMediaOperation -Category Archive -Operation 'ExpandWimlib' -Target $toolDir -Config $Config -ScriptBlock {
-        Expand-Archive -LiteralPath $zip -DestinationPath $toolDir -Force
+        Expand-WinMediaWimlibZip -Zip $zip -DestinationDir $toolDir -Sha256 $spec.Sha256
     } | Out-Null
 
     if ($isDefault) {
