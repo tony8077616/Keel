@@ -134,6 +134,14 @@ function Invoke-WinMediaDism {
             if (Test-WinMediaDismCore) {
                 $null = Initialize-WinMediaDismCompat -Provider 'Inbox' -Source 'DISM' -Config $Config
             }
+            else {
+                # 同一工作階段若已載入 ADK 的 Dism，Inbox 的 cmdlet 會實際跑 ADK；拒絕，而不是靜默沿用
+                $loaded = @(Get-Module -Name Dism)
+                $sysRoot = $env:SystemRoot + '\'
+                if ($loaded | Where-Object { -not $_.Path.StartsWith($sysRoot, [StringComparison]::OrdinalIgnoreCase) }) {
+                    throw "Dism 模組已從非 Inbox 路徑載入（$($loaded[0].Path)），Inbox 不能沿用；請重新開啟工作階段後再執行（§3.4.2 2e）。"
+                }
+            }
         }
         'ADK' {
             $adk = Resolve-WinMediaAdk -Config $Config
