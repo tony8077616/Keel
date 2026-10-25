@@ -86,7 +86,10 @@ function Test-WinMediaSignerIsMicrosoft {
         [Parameter(Mandatory)][System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate
     )
 
-    $rdns = $Certificate.SubjectName.Decode([System.Security.Cryptography.X509Certificates.X500DistinguishedNameFlags]::UseNewLines) -split "`r?`n"
+    $subject = $Certificate.SubjectName.Decode([System.Security.Cryptography.X509Certificates.X500DistinguishedNameFlags]::UseNewLines)
+    # 值內含換行或逗號時會被加引號；真正的 Microsoft 簽署者主體沒有引號，有就直接拒絕（防換行注入）
+    if ($subject.Contains('"')) { return $false }
+    $rdns = $subject -split "`r?`n"
     return [bool]($rdns | Where-Object { $_ -ceq 'O=Microsoft Corporation' })
 }
 
@@ -111,18 +114,27 @@ function Install-WinMediaAdk {
         Invoke-WebRequest -Uri $uri.Uri -OutFile $installer -UseBasicParsing
     } | Out-Null
 
-    $signature = Get-AuthenticodeSignature -LiteralPath $installer
-    if ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate -or -not (Test-WinMediaSignerIsMicrosoft -Certificate $signature.SignerCertificate)) {
-        Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
-        throw "ADK 安裝程式簽章無效或非 Microsoft 簽署，已刪除：$installer"
-    }
+    # 驗簽到執行結束之間持有控制代碼（FileShare.Read，無 Delete）：驗過的檔案在執行前不會被替換或改名
+    $held = [System.IO.File]::Open($installer, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+    try {
+        $signature = Get-AuthenticodeSignature -LiteralPath $installer
+        if ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate -or -not (Test-WinMediaSignerIsMicrosoft -Certificate $signature.SignerCertificate)) {
+            $held.Dispose()
+            $held = $null
+            Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+            throw "ADK 安裝程式簽章無效或非 Microsoft 簽署，已刪除：$installer"
+        }
 
-    $arguments = '/quiet /norestart /installpath "{0}" /features OptionId.DeploymentTools' -f $Config.AdkRoot
-    $process = Invoke-WinMediaOperation -Category External -Operation 'InstallAdk' -Target $installer -Config $Config -ScriptBlock {
-        Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+        $arguments = '/quiet /norestart /installpath "{0}" /features OptionId.DeploymentTools' -f $Config.AdkRoot
+        $process = Invoke-WinMediaOperation -Category External -Operation 'InstallAdk' -Target $installer -Config $Config -ScriptBlock {
+            Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+        }
+        if ($process.ExitCode -notin 0, 3010) {
+            throw "ADK 安裝失敗，結束碼 $($process.ExitCode)"
+        }
     }
-    if ($process.ExitCode -notin 0, 3010) {
-        throw "ADK 安裝失敗，結束碼 $($process.ExitCode)"
+    finally {
+        if ($held) { $held.Dispose() }
     }
 }
 
