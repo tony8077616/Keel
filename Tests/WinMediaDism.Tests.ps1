@@ -10,7 +10,8 @@ Describe 'Invoke-WinMediaDism 操作名稱' -Tag 'Unit' {
         $script:captured = $null
         Mock -ModuleName WinMediaDism Invoke-WinMediaOperation {
             param($Category, $Operation, $Target, $ScriptBlock, $Config)
-            # 不執行 ScriptBlock：避免真的呼叫 DISM Cmdlet
+            # 簽章需要接收全部參數；只記錄 Operation，不執行 ScriptBlock（避免真的呼叫 DISM Cmdlet）
+            $null = $Category, $Target, $ScriptBlock, $Config
             $script:captured = $Operation
         }
     }
