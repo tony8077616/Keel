@@ -42,16 +42,23 @@ function Mount-WinMediaImage {
     }
     finally {
         $save = $succeeded -and $CommitOnSuccess -and (-not $ReadOnly)
-        Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
-            if ($save) {
-                Dismount-WindowsImage -Path $MountPath -Save -LogLevel $Config.DismLogLevel | Out-Null
+        try {
+            Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
+                if ($save) {
+                    Dismount-WindowsImage -Path $MountPath -Save -LogLevel $Config.DismLogLevel | Out-Null
+                }
+                else {
+                    Dismount-WindowsImage -Path $MountPath -Discard -LogLevel $Config.DismLogLevel | Out-Null
+                }
             }
-            else {
-                Dismount-WindowsImage -Path $MountPath -Discard -LogLevel $Config.DismLogLevel | Out-Null
-            }
+            # 只在卸載成功（上一行未拋出）後移除；未卸載的掛載點可能仍被占用，不得刪除
+            Remove-WinMediaEmptyMountPoint -Path $MountPath -Created $createdMountDir -Config $Config
         }
-        # 只在卸載成功（上一行未拋出）後移除；未卸載的掛載點可能仍被占用，不得刪除
-        Remove-WinMediaEmptyMountPoint -Path $MountPath -Created $createdMountDir -Config $Config
+        catch {
+            # 動作已失敗時，保留原始例外，卸載錯誤只記錄；動作成功時卸載失敗必須拋出（Save 失敗等於映像沒寫入）
+            if ($succeeded) { throw }
+            Write-WinMediaLog -Config $Config -Level Warning -Message "動作失敗後卸載 $MountPath 也失敗（保留原始錯誤）：$($_.Exception.Message)"
+        }
     }
 }
 
