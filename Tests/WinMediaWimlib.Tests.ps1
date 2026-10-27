@@ -40,7 +40,7 @@ Describe 'Resolve-WinMediaWimlib' -Tag 'Unit' {
     BeforeEach {
         Mock -ModuleName WinMediaWimlib Invoke-WinMediaOperation { param($ScriptBlock) & $ScriptBlock }
         Mock -ModuleName WinMediaWimlib Invoke-WebRequest { }
-        Mock -ModuleName WinMediaWimlib Expand-Archive { param($DestinationPath) Set-Content -LiteralPath (Join-Path $DestinationPath 'wimlib-imagex.exe') -Value 'fake' }
+        Mock -ModuleName WinMediaWimlib Expand-WinMediaWimlibZip { param($DestinationDir) Set-Content -LiteralPath (Join-Path $DestinationDir 'wimlib-imagex.exe') -Value 'fake' }
         # 內附壓縮檔（tools\wimlib）驗證失敗，其餘（下載後的 zip）驗證通過
         Mock -ModuleName WinMediaWimlib Test-WinMediaFileHash { $false } -ParameterFilter { $Path -like '*tools\wimlib*' }
         Mock -ModuleName WinMediaWimlib Test-WinMediaFileHash { $true }
@@ -52,7 +52,7 @@ Describe 'Resolve-WinMediaWimlib' -Tag 'Unit' {
         $r = Resolve-WinMediaWimlib -Config (& $script:newCfg $exe)
         $r | Should -Be $exe
         Should -Invoke -ModuleName WinMediaWimlib Invoke-WebRequest -Times 0 -Exactly
-        Should -Invoke -ModuleName WinMediaWimlib Expand-Archive -Times 0 -Exactly
+        Should -Invoke -ModuleName WinMediaWimlib Expand-WinMediaWimlibZip -Times 0 -Exactly
         Should -Invoke -ModuleName WinMediaWimlib Test-WinMediaFileHash -Times 0 -Exactly
     }
 
@@ -62,7 +62,7 @@ Describe 'Resolve-WinMediaWimlib' -Tag 'Unit' {
         $r | Should -Be $exe
         Test-Path -LiteralPath $exe -PathType Leaf | Should -BeTrue
         Should -Invoke -ModuleName WinMediaWimlib Invoke-WebRequest -Times 1 -Exactly -ParameterFilter { $Uri -like 'https://wimlib.net/downloads/*' -and $OutFile -like "$TestDrive*" }
-        Should -Invoke -ModuleName WinMediaWimlib Expand-Archive -Times 1 -Exactly
+        Should -Invoke -ModuleName WinMediaWimlib Expand-WinMediaWimlibZip -Times 1 -Exactly
     }
 
     It '內附壓縮檔雜湊相符時不下載' {
@@ -70,18 +70,18 @@ Describe 'Resolve-WinMediaWimlib' -Tag 'Unit' {
         $exe = Join-Path $TestDrive 'bundled\tools\wimlib-imagex.exe'
         Resolve-WinMediaWimlib -Config (& $script:newCfg $exe) | Should -Be $exe
         Should -Invoke -ModuleName WinMediaWimlib Invoke-WebRequest -Times 0 -Exactly
-        Should -Invoke -ModuleName WinMediaWimlib Expand-Archive -Times 1 -Exactly
+        Should -Invoke -ModuleName WinMediaWimlib Expand-WinMediaWimlibZip -Times 1 -Exactly
     }
 
     It '下載後雜湊不符時 throw 且不解壓' {
         Mock -ModuleName WinMediaWimlib Test-WinMediaFileHash { $false }
         $exe = Join-Path $TestDrive 'badhash\tools\wimlib-imagex.exe'
         { Resolve-WinMediaWimlib -Config (& $script:newCfg $exe) } | Should -Throw '*SHA-256 不符*'
-        Should -Invoke -ModuleName WinMediaWimlib Expand-Archive -Times 0 -Exactly
+        Should -Invoke -ModuleName WinMediaWimlib Expand-WinMediaWimlibZip -Times 0 -Exactly
     }
 
     It '解壓後找不到 exe 時 throw' {
-        Mock -ModuleName WinMediaWimlib Expand-Archive { }
+        Mock -ModuleName WinMediaWimlib Expand-WinMediaWimlibZip { }
         $exe = Join-Path $TestDrive 'noexe\tools\wimlib-imagex.exe'
         { Resolve-WinMediaWimlib -Config (& $script:newCfg $exe) } | Should -Throw '*找不到 wimlib-imagex.exe*'
     }
