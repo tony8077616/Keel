@@ -13,7 +13,6 @@ function Invoke-WinMediaExternal {
     # 第三方程式執行（§4.1）：同步讀取 stdout 與 stderr，避免緩衝區死鎖；參數先遮蔽再紀錄
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'StandardInputPath', Justification = '由 $run 閉包使用，PSSA 無法追蹤閉包內的參數')]
     [CmdletBinding()]
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'StandardInputPath', Justification = '在 $run scriptblock 中使用，PSSA 無法追蹤')]
     param(
         [Parameter(Mandatory)][string]$FilePath,
         [string[]]$ArgumentList = @(),
