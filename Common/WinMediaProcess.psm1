@@ -21,8 +21,9 @@ function Invoke-WinMediaExternal {
         [string]$StandardInputPath
     )
 
+    # 含空白且沒有引號才包上引號；結尾的 \ 要加倍，否則會吃掉收尾的引號。含引號的參數（例如 oscdimg 的 -bootdata）由呼叫端自行組好，原樣傳出
     $quoted = foreach ($argument in $ArgumentList) {
-        if ($argument -match '\s') { '"{0}"' -f $argument } else { $argument }
+        if ($argument -match '\s' -and $argument -notmatch '"') { '"{0}"' -f ($argument -replace '(\\+)$', '$1$1') } else { $argument }
     }
     $target = '{0} {1}' -f $FilePath, ($quoted -join ' ')
 

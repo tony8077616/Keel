@@ -160,6 +160,10 @@ function Invoke-WinMediaDism {
         }
     }
 
+    # 操作紀錄的 operation 欄位取第一個命令名稱（例如 Mount-WindowsImage）；取不到時退回分派來源
+    $command = $ScriptBlock.Ast.Find({ param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true)
+    $operation = if ($command -and $command.GetCommandName()) { $command.GetCommandName() } else { $Provider }
+
     $wrapped = $ScriptBlock
     if ([int]$Config.DebugTrace -ge 3) {
         $tracePath = Join-Path -Path $Config.LogDir -ChildPath ('trace-dism-{0}.log' -f (Get-Date -Format 'HHmmssfff'))
@@ -169,7 +173,7 @@ function Invoke-WinMediaDism {
         }.GetNewClosure()
     }
 
-    return Invoke-WinMediaOperation -Category Dism -Operation $Provider -Target "DISM[$Provider]" -ScriptBlock $wrapped -Config $Config
+    return Invoke-WinMediaOperation -Category Dism -Operation $operation -Target "DISM[$Provider]" -ScriptBlock $wrapped -Config $Config
 }
 
 Export-ModuleMember -Function Invoke-WinMediaDism, Resolve-WinMediaDismLogLevel, Resolve-WinMediaDismUseWindowsPowerShell, Test-WinMediaDismHost
