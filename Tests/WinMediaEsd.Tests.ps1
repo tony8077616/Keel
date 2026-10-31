@@ -16,8 +16,11 @@ Describe 'Export-WinMediaEsd（目的檔已存在時先移除）' -Tag 'Unit' {
         [System.IO.File]::WriteAllText($wim, 'wim-payload')
         [System.IO.File]::WriteAllText($esd, 'old-esd')
 
+        Mock -ModuleName WinMediaEsd Get-WinMediaImageCount { 1 }
         Mock -ModuleName WinMediaEsd Invoke-WinMediaWimlib {
             [System.IO.File]::WriteAllText((Join-Path -Path $TestDrive -ChildPath 'esd-force\existed-at-export.txt'), [string](Test-Path -LiteralPath (Join-Path -Path $TestDrive -ChildPath 'esd-force\install.esd')))
+            # 模擬 wimlib 產生輸出檔，讓匯出後驗證通過
+            [System.IO.File]::WriteAllText((Join-Path -Path $TestDrive -ChildPath 'esd-force\install.esd'), 'new-esd')
         }
 
         Export-WinMediaEsd -SourceWim $wim -DestinationEsd $esd -Config $script:cfg
