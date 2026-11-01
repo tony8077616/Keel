@@ -14,7 +14,8 @@ function Convert-WinMediaEsdToWim {
     param(
         [Parameter(Mandatory)][string]$SourceEsd,
         [Parameter(Mandatory)][string]$DestinationWim,
-        [Parameter(Mandatory)][hashtable]$Config
+        [Parameter(Mandatory)][hashtable]$Config,
+        [switch]$KeepSource
     )
 
     if (Test-Path -LiteralPath $DestinationWim) {
@@ -29,13 +30,14 @@ function Convert-WinMediaEsdToWim {
     }
     else {
         Write-WinMediaLog -Config $Config -Level Info -Message "使用 DISM Cmdlet 轉換 ESD（未指定 Wimlib.Path）：$SourceEsd"
+        $common = Get-WinMediaDismCommonParameter -Config $Config
         $indexes = Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
-            Get-WindowsImage -ImagePath $SourceEsd -LogLevel $Config.DismLogLevel
+            Get-WindowsImage -ImagePath $SourceEsd -LogLevel $Config.DismLogLevel @common
         }
         foreach ($image in $indexes) {
             $exportIndex = $image.ImageIndex
             $export = {
-                Export-WindowsImage -SourceImagePath $SourceEsd -SourceIndex $exportIndex -DestinationImagePath $DestinationWim -CompressionType Max -LogLevel $Config.DismLogLevel | Out-Null
+                Export-WindowsImage -SourceImagePath $SourceEsd -SourceIndex $exportIndex -DestinationImagePath $DestinationWim -CompressionType Max -LogLevel $Config.DismLogLevel @common | Out-Null
             }.GetNewClosure()
             Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock $export | Out-Null
         }
@@ -44,9 +46,25 @@ function Convert-WinMediaEsdToWim {
     if (-not (Test-Path -LiteralPath $DestinationWim)) {
         throw "ESD 轉換後找不到輸出檔：$DestinationWim"
     }
+    if ($KeepSource) { return }
     Invoke-WinMediaOperation -Category File -Operation 'Remove' -Target $SourceEsd -Config $Config -ScriptBlock {
         Remove-Item -LiteralPath $SourceEsd -Force
     } | Out-Null
+}
+
+function Get-WinMediaImageCount {
+    # 以 wimlib-imagex info 取得 WIM／ESD 的映像數
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][hashtable]$Config
+    )
+
+    $result = Invoke-WinMediaWimlib -ArgumentList @('info', $Path) -Config $Config
+    if ($result.StdOut -notmatch '(?m)^\s*Image Count:\s*(\d+)') {
+        throw "無法從 wimlib info 取得映像數：$Path"
+    }
+    return [int]$Matches[1]
 }
 
 function Export-WinMediaEsd {
@@ -55,13 +73,15 @@ function Export-WinMediaEsd {
         以 wimlib-imagex 將 install.wim 轉為 LZMS 壓縮的 install.esd（§2.4）。
     .DESCRIPTION
         wimlib 未設定或找不到時自動下載固定版本（見 Resolve-WinMediaWimlib）；不退回 DISM（Learn 未記載 DISM 直接產生 ESD，§2.4、§7 第 9 項）。
-        成功後移除來源 install.wim。
+        匯出後會驗證輸出 ESD 存在且映像數與來源 WIM 相同，通過才移除來源 install.wim（-KeepSource 則保留）。
     .PARAMETER SourceWim
         來源 install.wim 路徑。
     .PARAMETER DestinationEsd
         輸出 install.esd 路徑。
     .PARAMETER Config
         由 Import-PowerShellDataFile 載入並補上執行期鍵值的設定表。
+    .PARAMETER KeepSource
+        指定時不刪除來源 install.wim。
     .EXAMPLE
         Export-WinMediaEsd -SourceWim '<WorkDir>\media\sources\install.wim' -DestinationEsd '<WorkDir>\media\sources\install.esd' -Config $config
     #>
@@ -69,7 +89,8 @@ function Export-WinMediaEsd {
     param(
         [Parameter(Mandatory)][string]$SourceWim,
         [Parameter(Mandatory)][string]$DestinationEsd,
-        [Parameter(Mandatory)][hashtable]$Config
+        [Parameter(Mandatory)][hashtable]$Config,
+        [switch]$KeepSource
     )
 
     # wimlib export 對既有檔案是附加映像而非覆寫，須先移除（與 Convert-WinMediaEsdToWim 相同）
@@ -80,6 +101,16 @@ function Export-WinMediaEsd {
     }
 
     Invoke-WinMediaWimlib -ArgumentList @('export', $SourceWim, 'all', $DestinationEsd, '--compress=LZMS', '--solid') -Config $Config | Out-Null
+
+    if (-not (Test-Path -LiteralPath $DestinationEsd)) {
+        throw "ESD 匯出後找不到輸出檔：$DestinationEsd"
+    }
+    $srcCount = Get-WinMediaImageCount -Path $SourceWim -Config $Config
+    $dstCount = Get-WinMediaImageCount -Path $DestinationEsd -Config $Config
+    if ($srcCount -lt 1 -or $srcCount -ne $dstCount) {
+        throw "ESD 映像數 ($dstCount) 與來源 WIM ($srcCount) 不符或映像數小於 1，保留來源：$SourceWim"
+    }
+    if ($KeepSource) { return }
 
     Invoke-WinMediaOperation -Category File -Operation 'Remove' -Target $SourceWim -Config $Config -ScriptBlock {
         Remove-Item -LiteralPath $SourceWim -Force

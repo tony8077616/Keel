@@ -31,6 +31,19 @@ function Resolve-WinMediaDismLogLevel {
     return $level
 }
 
+function Get-WinMediaDismCommonParameter {
+    # DISM Cmdlet 共用參數 splat；只在選項有設定時才加鍵，未設定時回傳空 hashtable（LogLevel 由 Resolve-WinMediaDismLogLevel 處理）
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param([Parameter(Mandatory)][hashtable]$Config)
+
+    $splat = @{}
+    if ($Config.ContainsKey('ScratchDirectory') -and $Config.ScratchDirectory -is [string] -and -not [string]::IsNullOrWhiteSpace($Config.ScratchDirectory)) {
+        $splat.ScratchDirectory = $Config.ScratchDirectory
+    }
+    return $splat
+}
+
 function Resolve-WinMediaDismUseWindowsPowerShell {
     # pwsh 7 下是否以 Windows PowerShell 5.1 相容模式載入 DISM；舊設定檔沒有此鍵時預設開啟
     [CmdletBinding()]
@@ -176,4 +189,4 @@ function Invoke-WinMediaDism {
     return Invoke-WinMediaOperation -Category Dism -Operation $operation -Target "DISM[$Provider]" -ScriptBlock $wrapped -Config $Config
 }
 
-Export-ModuleMember -Function Invoke-WinMediaDism, Resolve-WinMediaDismLogLevel, Resolve-WinMediaDismUseWindowsPowerShell, Test-WinMediaDismHost
+Export-ModuleMember -Function Invoke-WinMediaDism, Get-WinMediaDismCommonParameter,Resolve-WinMediaDismLogLevel, Resolve-WinMediaDismUseWindowsPowerShell, Test-WinMediaDismHost
