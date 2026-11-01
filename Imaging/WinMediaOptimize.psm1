@@ -22,10 +22,9 @@ function Optimize-WinMediaImage {
     $splat = Get-WinMediaDismCommonParameter -Config $Config
     if ($PSBoundParameters.ContainsKey('WindowsDirectory')) { $splat.WindowsDirectory = $WindowsDirectory }
     if ($PSBoundParameters.ContainsKey('SystemDrive')) { $splat.SystemDrive = $SystemDrive }
-    $logLevel = Resolve-WinMediaDismLogLevel -Config $Config
 
     Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
-        Optimize-WindowsImage -Path $Path -OptimizationTarget $OptimizationTarget -LogLevel $logLevel @splat | Out-Null
+        Optimize-WindowsImage -Path $Path -OptimizationTarget $OptimizationTarget -LogLevel $Config.DismLogLevel @splat | Out-Null
     }
 }
 
