@@ -149,18 +149,36 @@ Describe 'Convert-WinMediaEsdToWim -KeepSource' -Tag 'Unit' {
 }
 
 Describe 'Convert-WinMediaEsdToWim DISM 路徑的 ScratchDirectory 接線' -Tag 'Unit' {
-    # 只驗證接線：DISM scriptblock 含 @common 並向 Get-WinMediaDismCommonParameter 取值。
-    # 實際的 -ScratchDirectory 綁定由 Step 1 的 Get-WinMediaDismCommonParameter 測試涵蓋；
-    # scriptblock 內的 GetNewClosure 命令無法被 Pester 模擬，因此不執行 scriptblock。
-    BeforeEach {
-        Mock -ModuleName WinMediaEsd Invoke-WinMediaOperation { }
-        Mock -ModuleName WinMediaEsd Invoke-WinMediaDism {
-            param($ScriptBlock)
-            if ($ScriptBlock.ToString() -match 'Get-WindowsImage') { [pscustomobject]@{ ImageIndex = 1 } }
-        }
+    # Export 區塊以 GetNewClosure 建立，其中的命令從全域解析，-ModuleName Mock 攔不到；
+    # 因此以全域函式替身取代 DISM cmdlet，讓 scriptblock 真正執行並記錄實際綁定的參數。
+    BeforeAll {
+        $script:dismCalls = [System.Collections.Generic.List[hashtable]]::new()
+        $calls = $script:dismCalls
+        $script:stubbed = @('Get-WindowsImage', 'Export-WindowsImage') | Where-Object { -not (Test-Path -LiteralPath "function:global:$_") }
+        Set-Item -Path 'function:global:Get-WindowsImage' -Value ({
+            param($ImagePath, $LogLevel, $ScratchDirectory)
+            $null = $ImagePath, $LogLevel, $ScratchDirectory
+            $calls.Add(@{ Bound = $PSBoundParameters })
+            [pscustomobject]@{ ImageIndex = 1 }
+        }.GetNewClosure())
+        Set-Item -Path 'function:global:Export-WindowsImage' -Value ({
+            param($SourceImagePath, $SourceIndex, $DestinationImagePath, $CompressionType, $LogLevel, $ScratchDirectory)
+            $null = $SourceImagePath, $SourceIndex, $DestinationImagePath, $CompressionType, $LogLevel, $ScratchDirectory
+            $calls.Add(@{ Bound = $PSBoundParameters })
+        }.GetNewClosure())
     }
 
-    It '設定 ScratchDirectory 時取得 splat 並用於 Get 與 Export 兩段 DISM 呼叫' {
+    AfterAll {
+        foreach ($name in $script:stubbed) { Remove-Item -Path "function:global:$name" -ErrorAction SilentlyContinue }
+    }
+
+    BeforeEach {
+        $script:dismCalls.Clear()
+        Mock -ModuleName WinMediaEsd Invoke-WinMediaOperation { }
+        Mock -ModuleName WinMediaEsd Invoke-WinMediaDism { param($ScriptBlock) & $ScriptBlock }
+    }
+
+    It '設定 ScratchDirectory 時 Get 與 Export 兩段 DISM 呼叫都實際帶入該值' {
         Mock -ModuleName WinMediaEsd Get-WinMediaDismCommonParameter { @{ ScratchDirectory = 'D:\Scratch' } }
         $esd = Join-Path $TestDrive 'sc-install.esd'
         $wim = Join-Path $TestDrive 'sc-install.wim'
@@ -169,11 +187,11 @@ Describe 'Convert-WinMediaEsdToWim DISM 路徑的 ScratchDirectory 接線' -Tag 
         $cfg = & $script:newCfg ''
         $cfg.DismLogLevel = 'WarningsInfo'
         Convert-WinMediaEsdToWim -SourceEsd $esd -DestinationWim $wim -Config $cfg
-        Should -Invoke -ModuleName WinMediaEsd Get-WinMediaDismCommonParameter -Times 1 -Exactly
-        Should -Invoke -ModuleName WinMediaEsd Invoke-WinMediaDism -Times 2 -Exactly -ParameterFilter { $ScriptBlock.ToString() -match '@common' }
+        $script:dismCalls.Count | Should -Be 2
+        foreach ($c in $script:dismCalls) { $c.Bound.ScratchDirectory | Should -Be 'D:\Scratch' }
     }
 
-    It '未設定 ScratchDirectory 時 splat 為空，DISM 呼叫仍帶 @common' {
+    It '未設定 ScratchDirectory 時兩段 DISM 呼叫都不帶該鍵' {
         Mock -ModuleName WinMediaEsd Get-WinMediaDismCommonParameter { @{} }
         $esd = Join-Path $TestDrive 'nsc-install.esd'
         $wim = Join-Path $TestDrive 'nsc-install.wim'
@@ -182,7 +200,8 @@ Describe 'Convert-WinMediaEsdToWim DISM 路徑的 ScratchDirectory 接線' -Tag 
         $cfg = & $script:newCfg ''
         $cfg.DismLogLevel = 'WarningsInfo'
         Convert-WinMediaEsdToWim -SourceEsd $esd -DestinationWim $wim -Config $cfg
-        Should -Invoke -ModuleName WinMediaEsd Invoke-WinMediaDism -Times 2 -Exactly -ParameterFilter { $ScriptBlock.ToString() -match '@common' }
+        $script:dismCalls.Count | Should -Be 2
+        foreach ($c in $script:dismCalls) { $c.Bound.ContainsKey('ScratchDirectory') | Should -BeFalse }
     }
 }
 

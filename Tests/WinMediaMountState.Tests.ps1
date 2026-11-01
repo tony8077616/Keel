@@ -83,8 +83,15 @@ Describe 'Clear-WinMediaMount' -Tag 'Unit' {
     It 'Dismount 失敗：改呼叫 Clear-WindowsCorruptMountPoint，只記警告不拋出，繼續下一個路徑' {
         Mock -ModuleName WinMediaImage Dismount-WindowsImage { throw 'busy' }
         { Clear-WinMediaMount -MountPath 'C:\a', 'C:\b' -Config $script:cfg } | Should -Not -Throw
-        Should -Invoke -ModuleName WinMediaImage Clear-WindowsCorruptMountPoint -Exactly 2
+        Should -Invoke -ModuleName WinMediaImage Clear-WindowsCorruptMountPoint -Exactly 1
         Should -Invoke -ModuleName WinMediaImage Write-WinMediaLog -ParameterFilter { $Level -eq 'Warning' }
+    }
+
+    It 'Dismount 只有一個路徑失敗：Clear-WindowsCorruptMountPoint 仍只呼叫一次' {
+        Mock -ModuleName WinMediaImage Dismount-WindowsImage { throw 'busy' } -ParameterFilter { $Path -eq 'C:\a' }
+        Clear-WinMediaMount -MountPath 'C:\a', 'C:\b' -Config $script:cfg
+        Should -Invoke -ModuleName WinMediaImage Dismount-WindowsImage -Exactly 2
+        Should -Invoke -ModuleName WinMediaImage Clear-WindowsCorruptMountPoint -Exactly 1
     }
 
     It '設定 ScratchDirectory 時 Dismount 收到 -ScratchDirectory' {

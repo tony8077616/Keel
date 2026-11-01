@@ -160,6 +160,7 @@ function Clear-WinMediaMount {
     }
     catch { Write-WinMediaLog -Config $Config -Level Warning -Message "列舉已載入登錄檔失敗：$($_.Exception.Message)" }
 
+    $needCorruptCleanup = $false
     foreach ($mp in $MountPath) {
         try {
             Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
@@ -167,14 +168,17 @@ function Clear-WinMediaMount {
             }
         }
         catch {
-            Write-WinMediaLog -Config $Config -Level Warning -Message "捨棄卸載 $mp 失敗，改用 Clear-WindowsCorruptMountPoint：$($_.Exception.Message)"
-            try {
-                Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
-                    Clear-WindowsCorruptMountPoint @common | Out-Null
-                }
-            }
-            catch { Write-WinMediaLog -Config $Config -Level Warning -Message "Clear-WindowsCorruptMountPoint 失敗（$mp）：$($_.Exception.Message)" }
+            Write-WinMediaLog -Config $Config -Level Warning -Message "捨棄卸載 $mp 失敗，稍後改用 Clear-WindowsCorruptMountPoint：$($_.Exception.Message)"
+            $needCorruptCleanup = $true
         }
+    }
+    if ($needCorruptCleanup) {
+        try {
+            Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
+                Clear-WindowsCorruptMountPoint @common | Out-Null
+            }
+        }
+        catch { Write-WinMediaLog -Config $Config -Level Warning -Message "Clear-WindowsCorruptMountPoint 失敗：$($_.Exception.Message)" }
     }
 }
 
