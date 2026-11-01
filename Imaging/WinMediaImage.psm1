@@ -102,7 +102,7 @@ function Get-WinMediaMountState {
     $common = Get-WinMediaDismCommonParameter -Config $Config
     try {
         $mounted = Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
-            Get-WindowsImage -Mounted -ErrorAction Stop @common
+            Get-WindowsImage -Mounted -ErrorAction Stop -LogLevel $Config.DismLogLevel @common
         }
     }
     catch {
@@ -175,7 +175,7 @@ function Clear-WinMediaMount {
     if ($needCorruptCleanup) {
         try {
             Invoke-WinMediaDism -Provider $Config.DismProvider -Config $Config -ScriptBlock {
-                Clear-WindowsCorruptMountPoint @common | Out-Null
+                Clear-WindowsCorruptMountPoint -LogLevel $Config.DismLogLevel @common | Out-Null
             }
         }
         catch { Write-WinMediaLog -Config $Config -Level Warning -Message "Clear-WindowsCorruptMountPoint 失敗：$($_.Exception.Message)" }
