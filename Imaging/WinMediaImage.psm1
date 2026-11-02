@@ -132,7 +132,9 @@ public static extern uint QueryDosDevice(string lpDeviceName, System.Text.String
 '@
     }
     $map = @{}
-    foreach ($letter in 'A'..'Z') {
+    # Windows PowerShell 5.1 不支援字元範圍（'A'..'Z'），改用整數範圍再轉字元
+    foreach ($code in 65..90) {
+        $letter = [char]$code
         $buffer = New-Object System.Text.StringBuilder 1024
         if ([WinMediaNative.Kernel32]::QueryDosDevice("$($letter):", $buffer, [uint32]$buffer.Capacity) -eq 0) { continue }
         $target = ($buffer.ToString() -split "`0")[0]

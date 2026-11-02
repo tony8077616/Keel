@@ -68,6 +68,30 @@ Describe 'ConvertTo-WinMediaFilePath' -Tag 'Unit' {
     }
 }
 
+Describe 'Get-WinMediaDosDeviceMap（未 mock，實際呼叫 QueryDosDevice）' -Tag 'Unit' {
+    It '盤符對照表非空，且每個鍵都是 \Device\ 開頭的裝置路徑' {
+        InModuleScope WinMediaImage {
+            $map = Get-WinMediaDosDeviceMap
+            $map.Count | Should -BeGreaterThan 0
+            foreach ($key in $map.Keys) {
+                $key | Should -Match '^\\Device\\'
+                $map[$key] | Should -Match '^[A-Z]:$'
+            }
+        }
+    }
+}
+
+Describe 'Get-WinMediaLoadedHiveFile（未 mock hivelist）' -Tag 'Unit' {
+    It '實際讀取 hivelist：至少一個 hive 解析出 DOS 路徑，其餘為空字串' {
+        InModuleScope WinMediaImage {
+            $rows = @(Get-WinMediaLoadedHiveFile)
+            $rows.Count | Should -BeGreaterThan 0
+            ($rows | Where-Object { $_.File -ne '' }).Count | Should -BeGreaterThan 0
+            foreach ($row in $rows) { $row.File | Should -Match '^([A-Z]:\\.*)?$' }
+        }
+    }
+}
+
 Describe 'Get-WinMediaLoadedHiveFile' -Tag 'Unit' {
     It '只取 HKLM 之下的項目，並轉成 DOS 路徑' {
         Mock -ModuleName WinMediaImage Get-ItemProperty {
