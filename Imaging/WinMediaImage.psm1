@@ -120,16 +120,60 @@ function Get-WinMediaMountState {
         default { return 'Unknown' }
     }
 }
-function Get-WinMediaLoadedHive {
-    # 列出 HKLM 底下以 WinMedia_ 開頭或等於 WinMediaBootSW 的已載入登錄檔（reg.exe query）；獨立成函式以便測試時模擬
+function Get-WinMediaDosDeviceMap {
+    # 盤符對應的裝置路徑（例如 \Device\HarddiskVolume5 → C:）；獨立成函式以便測試時模擬
     [CmdletBinding()]
-    [OutputType([string[]])]
+    [OutputType([hashtable])]
     param()
-    $names = foreach ($line in @(& reg.exe query HKLM 2>$null)) {
-        $leaf = ([string]$line).Trim() -replace '^.*\\', ''
-        if ($leaf -like 'WinMedia_*' -or $leaf -eq 'WinMediaBootSW') { $leaf }
+    if (-not ('WinMediaNative.Kernel32' -as [type])) {
+        Add-Type -Namespace WinMediaNative -Name Kernel32 -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+public static extern uint QueryDosDevice(string lpDeviceName, System.Text.StringBuilder lpTargetPath, uint ucchMax);
+'@
     }
-    return [string[]]@($names)
+    $map = @{}
+    foreach ($letter in 'A'..'Z') {
+        $buffer = New-Object System.Text.StringBuilder 1024
+        if ([WinMediaNative.Kernel32]::QueryDosDevice("$($letter):", $buffer, [uint32]$buffer.Capacity) -eq 0) { continue }
+        $target = ($buffer.ToString() -split "`0")[0]
+        if ($target) { $map[$target] = "$($letter):" }
+    }
+    return $map
+}
+
+function ConvertTo-WinMediaFilePath {
+    # 把 hivelist 的裝置路徑轉成 DOS 路徑；對照不到時回傳空字串（該 hive 不會被任何掛載點匹配）
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$DevicePath,
+        [Parameter(Mandatory)][hashtable]$DeviceMap
+    )
+    $best = ''
+    foreach ($target in $DeviceMap.Keys) {
+        if ($DevicePath.Equals($target, [StringComparison]::OrdinalIgnoreCase) -or $DevicePath.StartsWith($target + '\', [StringComparison]::OrdinalIgnoreCase)) {
+            if ($target.Length -gt $best.Length) { $best = $target }
+        }
+    }
+    if (-not $best) { return '' }
+    return $DeviceMap[$best] + $DevicePath.Substring($best.Length)
+}
+
+function Get-WinMediaLoadedHiveFile {
+    # 讀取 hivelist：回傳已載入的 HKLM 鍵名（Name）與對應的 DOS 檔案路徑（File）；讀取失敗時拋出，由呼叫端決定如何處理
+    [CmdletBinding()]
+    [OutputType([pscustomobject[]])]
+    param()
+    $prefix = '\REGISTRY\MACHINE\'
+    $hivelist = Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\hivelist' -ErrorAction Stop
+    $deviceMap = Get-WinMediaDosDeviceMap
+    foreach ($prop in $hivelist.PSObject.Properties) {
+        if (-not $prop.Name.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { continue }
+        [pscustomobject]@{
+            Name = $prop.Name.Substring($prefix.Length)
+            File = ConvertTo-WinMediaFilePath -DevicePath ([string]$prop.Value) -DeviceMap $deviceMap
+        }
+    }
 }
 
 function Invoke-WinMediaRegUnload {
@@ -152,13 +196,16 @@ function Clear-WinMediaMount {
     if (-not $PSCmdlet.ShouldProcess(($MountPath -join ', '), '卸載登錄檔並捨棄掛載')) { return }
     $common = Get-WinMediaDismCommonParameter -Config $Config
 
+    # 只卸載檔案位於傳入掛載點之下的 hive；根路徑結尾加分隔符，避免 install-1 比對到 install-10
+    $roots = @($MountPath | ForEach-Object { (Get-ComparablePath -Path $_).TrimEnd('\') + '\' })
     try {
-        foreach ($hive in @(Get-WinMediaLoadedHive)) {
-            try { Invoke-WinMediaRegUnload -Name $hive }
-            catch { Write-WinMediaLog -Config $Config -Level Warning -Message "卸載登錄檔 $hive 失敗：$($_.Exception.Message)" }
+        foreach ($hive in @(Get-WinMediaLoadedHiveFile)) {
+            if (-not ($roots | Where-Object { $hive.File.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) })) { continue }
+            try { Invoke-WinMediaRegUnload -Name $hive.Name }
+            catch { Write-WinMediaLog -Config $Config -Level Warning -Message "卸載登錄檔 $($hive.Name) 失敗：$($_.Exception.Message)" }
         }
     }
-    catch { Write-WinMediaLog -Config $Config -Level Warning -Message "列舉已載入登錄檔失敗：$($_.Exception.Message)" }
+    catch { Write-WinMediaLog -Config $Config -Level Warning -Message "讀取 hivelist 失敗，略過登錄檔卸載：$($_.Exception.Message)" }
 
     $needCorruptCleanup = $false
     foreach ($mp in $MountPath) {
