@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 
 # wimlib-imagex 解析、取得與呼叫模組（§2.4）
 # 需要的 Config 鍵：Wimlib.Path（空白則使用 %LOCALAPPDATA% 預設位置）、WorkDir（下載暫存）、DebugTrace、OperationLog、LogLevel／LogFile
-# 內附壓縮檔放在本模組的 tools\wimlib\（與模組一起搬移）
+# 內附壓縮檔路徑為本模組的 tools\wimlib\，但 .gitignore 排除 *.zip，clone 後不存在；快取內沒有有效 zip、也沒有內附 zip 時，才從 wimlib.net 下載
 $script:ImagingRoot = $PSScriptRoot
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath '..\Common\WinMediaLog.psm1') -Force
 Import-Module -Name (Join-Path -Path $PSScriptRoot -ChildPath '..\Common\WinMediaOperation.psm1') -Force
